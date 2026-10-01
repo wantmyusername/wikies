@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "WikiES — Traducir artículos de Wikipedia al español",
+  "version": "0.1.0",
+  "description": "Detecta artículos de la Wikipedia en inglés o portugués sin versión en español y genera un wikitexto traducido, editable y listo para pegar.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://en.wikipedia.org/*",
+    "https://pt.wikipedia.org/*",
+    "https://es.wikipedia.org/*",
+    "https://api.openai.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://en.wikipedia.org/wiki/*", "https://pt.wikipedia.org/wiki/*"],
+      "js": ["src/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "src/options.html"
+}
