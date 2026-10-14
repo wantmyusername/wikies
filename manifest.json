@@ -7,6 +7,7 @@
   "host_permissions": [
     "https://en.wikipedia.org/*",
     "https://pt.wikipedia.org/*",
+    "https://fr.wikipedia.org/*",
     "https://es.wikipedia.org/*",
     "https://api.openai.com/*"
   ],
@@ -15,7 +16,11 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://en.wikipedia.org/wiki/*", "https://pt.wikipedia.org/wiki/*"],
+      "matches": [
+        "https://en.wikipedia.org/wiki/*",
+        "https://pt.wikipedia.org/wiki/*",
+        "https://fr.wikipedia.org/wiki/*"
+      ],
       "js": ["src/content.js"],
       "run_at": "document_idle"
     }

@@ -1,6 +1,6 @@
 # WikiES
 
-Extensión de Chrome que detecta artículos de Wikipedia en inglés o portugués **sin versión en español** y genera un wikitexto traducido, editable y listo para pegar en la Wikipedia en español.
+Extensión de Chrome que detecta artículos de Wikipedia en inglés, portugués o francés **sin versión en español** y genera un wikitexto traducido, editable y listo para pegar en la Wikipedia en español.
 
 ## Qué hace
 
@@ -15,6 +15,7 @@ Extensión de Chrome que detecta artículos de Wikipedia en inglés o portugués
 
 - `https://en.wikipedia.org/wiki/*` (inglés → español)
 - `https://pt.wikipedia.org/wiki/*` (portugués → español)
+- `https://fr.wikipedia.org/wiki/*` (francés → español)
 
 ## Instalación (modo desarrollador)
 
@@ -33,7 +34,7 @@ Extensión de Chrome que detecta artículos de Wikipedia en inglés o portugués
 
 ## Uso
 
-1. Abre un artículo en `en.wikipedia.org` o `pt.wikipedia.org`.
+1. Abre un artículo en `en.wikipedia.org`, `pt.wikipedia.org` o `fr.wikipedia.org`.
 2. Pulsa el botón flotante **→ ES (WikiES)**.
 3. Pulsa **Traducir** y revisa el resultado.
 4. Copia el wikitexto o usa **Copiar y abrir editor ES** para pegarlo.

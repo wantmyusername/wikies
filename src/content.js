@@ -18,14 +18,20 @@
   window.__wikiESLoaded = true;
 
   // Idioma de origen según el host donde se inyecta el script. Por defecto en.
-  const SOURCE_LANG = /^pt\.wikipedia\.org$/i.test(location.hostname) ? "pt" : "en";
-  const SOURCE_LANG_NAME = SOURCE_LANG === "pt" ? "portugués" : "inglés";
+  const SOURCE_LANG =
+    /^pt\.wikipedia\.org$/i.test(location.hostname) ? "pt"
+    : /^fr\.wikipedia\.org$/i.test(location.hostname) ? "fr"
+    : "en";
+  const SOURCE_LANG_NAME =
+    SOURCE_LANG === "pt" ? "portugués" : SOURCE_LANG === "fr" ? "francés" : "inglés";
   const SOURCE_API = "https://" + SOURCE_LANG + ".wikipedia.org/w/api.php";
   const ES_API = "https://es.wikipedia.org/w/api.php";
 
   // Namespaces reales de las plantillas y categorías del wiki de origen.
-  const SRC_TPL_NS = SOURCE_LANG === "pt" ? "Predefinição" : "Template";
-  const SRC_CAT_NS = SOURCE_LANG === "pt" ? "Categoria" : "Category";
+  const SRC_TPL_NS =
+    SOURCE_LANG === "pt" ? "Predefinição" : SOURCE_LANG === "fr" ? "Modèle" : "Template";
+  const SRC_CAT_NS =
+    SOURCE_LANG === "pt" ? "Categoria" : SOURCE_LANG === "fr" ? "Catégorie" : "Category";
 
   const TOKEN_RE = /⟪T(\d+)⟫/g;
   const tokenOf = (i) => "⟪T" + i + "⟫";
@@ -65,6 +71,14 @@
     references: "listaref",
     "Authority control": "Control de autoridades",
     "Commons category": "Commonscat",
+    "Short description": "Descripción corta",
+    Main: "Artículo principal",
+    Distinguish: "Otros usos",
+    "Citation needed": "cita requerida",
+    Anchor: "Ancla",
+    Hlist: "Lista plana",
+    "Wiktionary-inline": "Wikcionario",
+    "See also": "Véase también",
     "birth date and age": "fecha de nacimiento y edad",
     "birth date": "fecha de nacimiento",
     "death date and age": "fecha de fallecimiento y edad",
@@ -113,6 +127,48 @@
     "data de falecimento e idade": "fecha de fallecimiento y edad",
     "converter": "convertir",
     "bandeira": "bandera",
+    // Respaldo para plantillas frecuentes de fr.wikipedia (el langlink real
+    // tiene prioridad). Clave = nombre en el wiki de origen.
+    "Références": "listaref",
+    "Réf": "listaref",
+    "Voir homonymes": "Otros usos",
+    "Autorité": "Control de autoridades",
+    "Autorité contrôle": "Control de autoridades",
+    "Infobox Biographie2": "Ficha de persona",
+    "Infobox Biographie": "Ficha de persona",
+    "Infobox Artiste": "Ficha de artista musical",
+    "Infobox Musique (artiste)": "Ficha de agrupación artística",
+    "Infobox Album": "Ficha de álbum",
+    "Infobox Chanson": "Ficha de sencillo",
+    "Infobox Single": "Ficha de sencillo",
+    "Infobox Écrivain": "Ficha de escritor",
+    "Infobox Acteur": "Ficha de actor",
+    "Infobox Scientifique": "Ficha de científico",
+    "Infobox Personnalité politique": "Ficha de político",
+    "Infobox Société": "Ficha de organización",
+    "Infobox Club de football": "Ficha de equipo de fútbol",
+    "Infobox Commune de France": "Ficha de entidad subnacional",
+    "Infobox Film": "Ficha de película",
+    "Infobox Série télévisée": "Ficha de serie de televisión",
+    "Infobox Jeu vidéo": "Ficha de videojuego",
+    "Infobox Livre": "Ficha de libro",
+    "Infobox Université": "Ficha de universidad",
+    "Lien web": "cita web",
+    "Article": "cita noticia",
+    "Ouvrage": "cita libro",
+    "Chapitre": "cita libro",
+    "Lien arXiv": "cita publicación",
+    "Citation": "cita requerida",
+    "Référence nécessaire": "cita requerida",
+    "Légende": "leyenda",
+    "Langue": "lang",
+    "Lang": "lang",
+    "Unité": "unidad",
+    "Nombre": "formatnum",
+    "Date de naissance et âge": "fecha de nacimiento y edad",
+    "Date de naissance": "fecha de nacimiento",
+    "Date de décès": "fecha de fallecimiento",
+    "Date de décès et âge": "fecha de fallecimiento y edad",
   };
 
   // Plantillas de mantenimiento/formato que deben eliminarse.
@@ -126,6 +182,14 @@
     "Featured article",
     "Cleanup",
     "More citations needed",
+    "cs1 config",
+    "CS1 config",
+    "cbignore",
+    "Div col",
+    "Div col end",
+    "div col",
+    "div col end",
+    "Use MDY dates",
     // Mantenimiento en pt.wikipedia.
     "Sem fontes",
     "Mais fontes",
@@ -136,14 +200,42 @@
     "Parcial",
     "Desatualizado",
     "Info/Sem fontes",
+    // Mantenimiento en fr.wikipedia.
+    "Ébauche",
+    "Wikification",
+    "Sources à lier",
+    "À sourcer",
+    "Voir sommaire",
+    "Homonymie",
   ];
 
-  const PROSE_SYSTEM = `Eres un traductor profesional de Wikipedia (${SOURCE_LANG_NAME} → español). Traduce el texto al español enciclopédico natural y fluido.
+  // Manual de estilo de la Wikipedia en español (Wikipedia:Manual de estilo)
+  // resumido de forma operativa para el traductor.
+  const STYLE_MANUAL = `MANUAL DE ESTILO DE LA WIKIPEDIA EN ESPAÑOL (aplicar al texto traducido; en lo estructural mandan las plantillas/referencias/enlaces del original, en lo tipográfico manda este manual):
+- Primera frase: la primera mención del tema va en negrita ('''...''') y sin enlace; consérvala si ya existe. Los títulos de sección llevan mayúscula solo en la primera palabra y en nombres propios, sin negritas, enlaces ni artículo inicial.
+- Mayúsculas: minúscula en cargos y títulos («el presidente Biden», «la reina Isabel II»), días, meses, estaciones, gentilicios, idiomas y religiones. Mayúscula en nombres propios, instituciones concretas («Reserva Federal»), siglas e inicio de oración. No uses mayúsculas para enfatizar.
+- Cursiva: títulos de obras (libros, películas, álbumes, series, revistas, periódicos, programas), nombres científicos, nombres de barcos y extranjerismos no adaptados. Evita la negrita fuera de la primera frase, salvo definiciones en listas.
+- Comillas angulares « » para citas breves, títulos de canciones, artículos y capítulos; dentro “ ” y en tercer nivel ‘ ’. La puntuación va fuera de las comillas de cierre. No uses comillas para empresas, grupos, marcas ni instituciones. Las citas largas van sin comillas con la plantilla {{Cita}}.
+- Números: 0–9 en letra en texto corrido salvo con unidades, fechas, porcentajes o en tablas y listas; criterio uniforme en la misma frase. Decimales con coma («3,5»). Miles con espacio duro (&nbsp;) a partir de cinco cifras («10&nbsp;000»); cuatro cifras sin separador («4500»). Porcentajes con espacio duro: «31&nbsp;%». Unidades del SI con espacio duro («5&nbsp;km», «20&nbsp;°C»), símbolos sin punto ni plural. Escala larga: «billion» → «mil millones»; «billón» = 10^12.
+- Fechas: «25 de septiembre de 2019», meses en minúscula, sin cero inicial ni artículo ante el año. Siglos en números romanos («siglo XX»). Décadas: «década de 1990» o «años noventa».
+- Siglas: mayúsculas, sin puntos y sin plural con -s («las ONG»). Primera aparición: desarrollo seguido de la sigla entre paréntesis. «EE. UU.» con espacio duro. Prefiere «Estados Unidos» en texto corrido.
+- Redacción: tono enciclopédico, neutral y en tercera persona. Sin adjetivos valorativos, frases publicitarias ni segunda persona. Evita «actualmente», «recientemente», «el año pasado»; usa «en 2023» o «a fecha de [fecha]». Presente para lo vigente, pretérito para hechos históricos. Español neutro, sin regionalismos ni anglicismos innecesarios. Primera mención de una persona con nombre completo; después solo el apellido; sin tratamientos honoríficos («Dr.», «Sir») salvo que formen parte del nombre. No traduzcas nombres propios de personas, empresas ni marcas; traduce instituciones solo si existe forma consolidada en español; mantén los términos extranjeros en cursiva o con plantilla de idioma.
+- Enlaces internos: enlaza la primera mención relevante de cada concepto, no todas. No enlaces en títulos de sección, pies ya enlazados ni años sueltos. Usa [[destino|texto visible]] cuando la forma gramatical difiera del título. Traduce el destino al título más probable en eswiki; ante duda, [[:xx:Título|texto]].
+- Referencias: las llamadas <ref> van tras el signo de puntuación, sin espacio previo. Agrupa varias referencias seguidas sin separadores. No traduzcas su contenido salvo fechas, etiquetas y nombres de parámetros. Referencias duplicadas: definición completa en la primera aparición y <ref name="x" /> después.
+- Tipografía: raya (—) para incisos sin espacio interior; evita el guion corto. Puntos suspensivos: tres, sin espacio previo. Sin dobles espacios. &nbsp; entre número y unidad y en «n.º». Acentúa siempre las mayúsculas (Á, É…).
+- Lenguaje inclusivo: si la fuente indica que una persona es no binaria o usa pronombres neutros, evita marcar género en español cuando sea posible («persona cantautora», «conocide»).`;
+
+  const PROSE_SYSTEM = `Eres un traductor especializado en artículos de Wikipedia (${SOURCE_LANG_NAME} → español). Recibes wikitexto y devuelves el wikitexto equivalente listo para la Wikipedia en español.
 REGLAS ESTRICTAS:
 - Conserva EXACTAMENTE los marcadores ⟪T0⟫, ⟪T1⟫… sin cambiar el número ni añadir espacios.
-- Conserva la sintaxis wiki: [[enlaces]], [[Enlace|texto]], encabezados (==, ===), '''negrita''', ''cursiva'', listas (* #), tablas, <ref>, </ref>, <ref name="...">, y etiquetas HTML.
-- Traduce el texto visible de los enlaces internos cuando sea un término común; deja igual nombres propios, títulos de obras y nombres de archivos.
-- Devuelve ÚNICAMENTE la traducción. No añadas comentarios, títulos ni explicaciones.`;
+- Conserva toda la estructura: secciones, listas, tablas, fórmulas <math>, enlaces, URLs, DOIs, ISBN, nombres de referencias (<ref name="...">) y su orden, '''negrita''', ''cursiva'', etiquetas HTML.
+- No inventes ni elimines contenido. No resumas. No añadas fuentes.
+- Traduce el texto visible, los títulos de sección, los pies de imagen, las citas textuales del cuerpo y los títulos de enlaces internos.
+- NO traduzcas títulos de obras citadas (campo título=), nombres de publicaciones, URLs, identificadores ni extractos literales en cita= (déjalos en el idioma original).
+- Devuelve ÚNICAMENTE la traducción (sin bloques de código, comentarios, títulos ni explicaciones).
+- Si algo es ambiguo o parece un error de la fuente, tradúcelo tal cual.
+
+` + STYLE_MANUAL;
 
   const TEMPLATE_SYSTEM = `Conviertes plantillas de la Wikipedia en ${SOURCE_LANG_NAME} a la Wikipedia en español.
 Recibirás JSON: {"blocks":[{"id":0,"en":"{{...}}"}]}.
@@ -154,12 +246,25 @@ REGLAS:
 - Elimina las plantillas de esta lista (devuelve "" para ellas): __REMOVE__.
 - NO cambies: URLs, nombres de archivos (File:...), refs (ref name), números, códigos de idioma.
 - Si una plantilla no tiene equivalente claro, devuélvela envuelta en un comentario HTML con el prefijo EXACTO: <!-- sin-equivalente: NOMBRE ... -->
-- Mantén el wikitexto válido. No escribas texto fuera del JSON.`;
+- Las plantillas de navegación sin equivalente seguro se omiten (devuelve "").
+- Mantén el wikitexto válido. No escribas texto fuera del JSON.
+
+EQUIVALENCIAS FRECUENTES (además del MAPA):
+- {{Short description}} → {{Descripción corta}}; {{Main}} → {{Artículo principal}}; {{Distinguish}}/{{Voir homonymes}} → {{Otros usos}}; {{Citation needed}} → {{cita requerida}}; {{Anchor}} → {{Ancla}}; {{Hlist}} → {{Lista plana}}; {{Authority control}} → {{Control de autoridades}}; {{Reflist}}/{{Références}}/{{Referências}} → {{Listaref}}; {{Wiktionary-inline}} → {{Wikcionario}}; {{Small|x}} → <small>x</small>.
+- {{DEFAULTSORT:...}} → {{NF|año de nacimiento|Apellido}} solo en biografías.
+- Citas: {{Cite web}} → {{Cita web}}; {{Cite news}} → {{Cita noticia}}; {{Cite journal}}/{{Cite magazine}} → {{Cita publicación}}; {{Cite book}} → {{Cita libro}}; {{Cite conference}} → {{Cita conferencia}}; {{Cite arXiv}} → {{Cita publicación}} con arxiv=; {{Lien web}} → {{cita web}}; {{Article}} → {{cita noticia}}; {{Ouvrage}} → {{cita libro}}.
+- FICHAS: usa los parámetros de la ficha de eswiki, no los del original (p. ej. {{Ficha de artista musical}}: nombre, imagen, descripción, nacimiento, lugar_nacimiento, origen, alias, ocupación, instrumento, género, tiempo, discográfica). Nunca dejes parámetros de fallecimiento si la persona está viva. Las referencias con nombre reutilizadas en el texto deben definirse en el cuerpo, no solo dentro de la ficha.
+- ARCHIVOS: File:/Image:/Ficheiro:/Fichier: → Archivo:; thumb/vignette/miniatura → miniaturadeimagen.
+- CATEGORÍAS: traduce el nombre; evita categorías automáticas o redundantes con {{NF}} («Personas vivas», «Nacidos en…»).`;
 
   // Nombres de parámetro reales de las plantillas de cita en es.wikipedia.
   const CITE_GUIDE = `PARA PLANTILLAS DE CITA (cita web, cita noticia, cita libro, cita publicación, cita conferencia) usa SOLO estos parámetros, SIN guiones ni guiones bajos:
-url, título, apellido, nombre, apellido1, nombre1, autor, autores, enlaceautor, fecha, sitioweb, obra, editorial, ubicación, idioma, fechaacceso, urlarchivo, fechaarchivo, urlmuerta, páginas, volumen, número, publicación, isbn, doi, pmid, pmc, cita, formato, vía, ref.
-PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo, estado-url, website, work, publisher, access-date, archive-url, archive-date, accessdate, archivedate.`;
+url, título, apellido, nombre, apellido1, nombre1, autor, autores, enlaceautor, fecha, sitioweb, obra, periódico, editorial, ubicación, idioma, fechaacceso, urlarchivo, fechaarchivo, urlmuerta, suscripción, páginas, volumen, número, publicación, isbn, issn, doi, pmid, pmc, bibcode, hdl, s2cid, arxiv, cita, formato, vía, ref.
+EQUIVALENCIAS DE PARÁMETROS (origen → es):
+last/first → apellido/nombre (last2 → apellido2, first2 → nombre2, etc.); author-link → enlaceautor; title → título; url → url; date/year → fecha; access-date → fechaacceso; website → sitioweb (cita web); work/newspaper → periódico (cita noticia); journal → publicación; publisher → editorial; volume/issue/pages → volumen/número/páginas; language → idioma; quote → cita; archive-url/archive-date → urlarchivo/fechaarchivo; url-status=dead → urlmuerta=sí; url-access=subscription → suscripción=sí; vauthors=«Soroka S, Fournier P» → apellidos=Soroka|nombre=S|apellidos2=Fournier|nombre2=P; wayb= (pt) → urlarchivo y fechaarchivo a partir del archivado en web.archive.org.
+doi, pmid, pmc, bibcode, issn, isbn, hdl, s2cid se mantienen igual.
+{{Cita}} en eswiki solo acepta 1= (texto), 2= (autor) y estilo=; no uses alineación, ancho ni fondo.
+PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo, estado-url, website, work, publisher, access-date, archive-url, archive-date, accessdate, archivedate, url-access, url-status.`;
 
   // Correcciones deterministas de parámetros de cita (inglés/errores -> es).
   const CITE_PARAM_FIXES = {
@@ -247,6 +352,21 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
     título: "título",
     capítulo: "capítulo",
     transcrição: "cita",
+    // Acceso, estado y campos de revistas/periódicos.
+    "url-access": "suscripción",
+    url_access: "suscripción",
+    urlaccess: "suscripción",
+    "access-level": "suscripción",
+    newspaper: "periódico",
+    "newspaper-name": "periódico",
+    "journal-name": "publicación",
+    year: "fecha",
+    "orig-year": "año-original",
+    origyear: "año-original",
+    "chapter-title": "capítulo",
+    chapter: "capítulo",
+    "editor-last": "apellido-editor",
+    "editor-first": "nombre-editor",
   };
 
   // Plantillas de premios (tablas de galardones) inglés -> {{Celda|...}} en ES.
@@ -266,6 +386,9 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
     });
     out = out.replace(/(\|\s*urlmuerta\s*=\s*)(live|dead|usurped|unfit|bot:\s*unknown)/gi, (_m, pre, v) => {
       return pre + (v.toLowerCase() === "live" ? "no" : "sí");
+    });
+    out = out.replace(/(\|\s*suscripción\s*=\s*)(subscription|yes|true|registered|limited)/gi, (_m, pre) => {
+      return pre + "sí";
     });
     return out;
   }
@@ -460,9 +583,10 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
       /<(nowiki|math|code|pre|syntaxhighlight|source|score|gallery)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
       (m) => put(m, "raw")
     );
-    // Categorías: [[Category:X|orden]] (en), [[Categoria:X|orden]] (pt) y [[Categoría:X|orden]] (es)
+    // Categorías: [[Category:X|orden]] (en), [[Categoria:X|orden]] (pt),
+    // [[Catégorie:X|orden]] (fr) y [[Categoría:X|orden]] (es)
     text = text.replace(
-      /\[\[\s*(Category|Categoria|Categoría)\s*:\s*([^\]|]+?)\s*(\|[^\]]*)?\]\]/gi,
+      /\[\[\s*(Category|Categoria|Catégorie|Categorie|Categoría)\s*:\s*([^\]|]+?)\s*(\|[^\]]*)?\]\]/gi,
       (m, _ns, name, sort) => put(m, "category", { en: name.trim(), sort: sort || "" })
     );
     text = maskBraces(text, put);
@@ -968,11 +1092,11 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
   // Arranque
   // ---------------------------------------------------------------------------
   const EXCLUDED_NS =
-    /^(Special|Wikipedia|Portal|Template|Category|File|Help|User|Talk|Draft|Module|MediaWiki|Especial|Wikipédia|Predefinição|Categoria|Ficheiro|Ajuda|Usuário|Usuário(a)|Discussão|Rascunho|Módulo):/i;
-  const MAIN_PAGES = /^(Main_Page|Página_principal)$/i;
+    /^(Special|Wikipedia|Portal|Template|Category|File|Help|User|Talk|Draft|Module|MediaWiki|Especial|Wikipédia|Predefinição|Categoria|Ficheiro|Ajuda|Usuário|Usuário\(a\)|Discussão|Rascunho|Módulo|Spécial|Modèle|Catégorie|Fichier|Utilisateur|Utilisatrice|Discussion|Portail|Projet|Wikipédia|Référence):/i;
+  const MAIN_PAGES = /^(Main_Page|Página_principal|Accueil_principal)$/i;
 
   function currentArticleTitle() {
-    if (!/^(en|pt)\.wikipedia\.org$/i.test(location.hostname)) return null;
+    if (!/^(en|pt|fr)\.wikipedia\.org$/i.test(location.hostname)) return null;
     const m = location.pathname.match(/^\/wiki\/(.+)$/);
     if (!m) return null;
     const t = decodeURIComponent(m[1]);
