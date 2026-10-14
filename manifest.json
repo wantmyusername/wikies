@@ -1,8 +1,21 @@
 {
   "manifest_version": 3,
   "name": "WikiES — Traducir artículos de Wikipedia al español",
-  "version": "0.1.0",
-  "description": "Detecta artículos de la Wikipedia en inglés o portugués sin versión en español y genera un wikitexto traducido, editable y listo para pegar.",
+  "version": "0.2.0",
+  "description": "Detecta artículos de la Wikipedia en inglés, portugués o francés sin versión en español y genera un wikitexto traducido, editable y listo para pegar.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "WikiES — Opciones",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
   "permissions": ["storage"],
   "host_permissions": [
     "https://en.wikipedia.org/*",

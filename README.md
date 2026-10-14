@@ -46,6 +46,16 @@ Extensión de Chrome que detecta artículos de Wikipedia en inglés, portugués 
 3. **Resolución de plantillas/categorías**: se consultan *langlinks* reales de Wikipedia; lo que no tiene equivalente se marca o comenta.
 4. **Recomposición**: se reconstruye el wikitexto, se normalizan parámetros de cita y se inserta la atribución.
 
+## Pruebas
+
+```bash
+npm test
+```
+
+Ejecuta las pruebas unitarias (Node ≥ 18) del enmascarado de wikitexto, la normalización de citas y la inserción de la atribución.
+
+Para regenerar los iconos: `node tools/generate-icons.js`.
+
 ## Aviso
 
 La traducción automática no sustituye una revisión humana. Revisa siempre el resultado antes de publicar.

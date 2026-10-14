@@ -14,13 +14,18 @@
  */
 (() => {
   "use strict";
-  if (window.__wikiESLoaded) return;
-  window.__wikiESLoaded = true;
+  const root = typeof window !== "undefined" ? window : globalThis;
+  if (root.__wikiESLoaded) return;
+  root.__wikiESLoaded = true;
+
+  // Datos de ubicación (ausentes al cargar en Node para las pruebas).
+  const HOSTNAME = (typeof location !== "undefined" && location.hostname) || "";
+  const PATHNAME = (typeof location !== "undefined" && location.pathname) || "";
 
   // Idioma de origen según el host donde se inyecta el script. Por defecto en.
   const SOURCE_LANG =
-    /^pt\.wikipedia\.org$/i.test(location.hostname) ? "pt"
-    : /^fr\.wikipedia\.org$/i.test(location.hostname) ? "fr"
+    /^pt\.wikipedia\.org$/i.test(HOSTNAME) ? "pt"
+    : /^fr\.wikipedia\.org$/i.test(HOSTNAME) ? "fr"
     : "en";
   const SOURCE_LANG_NAME =
     SOURCE_LANG === "pt" ? "portugués" : SOURCE_LANG === "fr" ? "francés" : "inglés";
@@ -435,15 +440,40 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
     return out;
   }
 
+  // Normaliza un nombre de plantilla para comparar (sin prefijo, sin acentos,
+  // sin artículos genéricos ni signos).
+  function normalizeTplName(s) {
+    return String(s || "")
+      .replace(/^(Plantilla|Template|Predefinição|Modèle)\s*:\s*/i, "")
+      .replace(/^(Infobox\s+|Ficha de\s+|Info\/)/i, "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
   // Sugerencia de plantilla ES por búsqueda (para las que no tienen langlink).
+  // Solo devuelve coincidencias fiables: nombre normalizado idéntico o
+  // contención con un único candidato. Evita asignaciones automáticas erróneas.
   async function suggestEsTemplates(enNames) {
     const out = {};
     for (const n of (enNames || []).slice(0, 15)) {
       try {
         const q = n.replace(/^(Infobox\s+|Info\/)/i, "").replace(/\s+/g, " ").trim();
-        const d = await esApi({ action: "query", list: "search", srsearch: q, srnamespace: "10", srlimit: "3" });
-        const hits = (d.query && d.query.search) || [];
-        out[n] = hits.map((h) => h.title.replace(/^Plantilla:/, ""));
+        const d = await esApi({ action: "query", list: "search", srsearch: q, srnamespace: "10", srlimit: "5" });
+        const hits = ((d.query && d.query.search) || [])
+          .map((h) => h.title.replace(/^Plantilla:/, ""))
+          .filter((h) => h && !/\//.test(h) && !/\.(css|js|json)$/i.test(h));
+        const src = normalizeTplName(n);
+        if (!src) continue;
+        const exact = hits.filter((h) => normalizeTplName(h) === src);
+        const near = hits.filter((h) => {
+          const hh = normalizeTplName(h);
+          return hh && (hh.includes(src) || src.includes(hh));
+        });
+        if (exact.length === 1) out[n] = exact[0];
+        else if (!exact.length && near.length === 1) out[n] = near[0];
       } catch (_) { /* ignore */ }
     }
     return out;
@@ -472,7 +502,13 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
       titles: title,
       redirects: "1",
     });
-    const p = d.query && d.query.pages && d.query.pages[0];
+    const pages = (d.query && d.query.pages) || [];
+    // Con redirects=1 pueden venir varias páginas: prioriza la que tiene
+    // langlink, luego el destino de la redirección (no la redirección misma).
+    const p =
+      pages.find((x) => x.langlinks && x.langlinks.length) ||
+      pages.find((x) => !x.redirect) ||
+      pages[0];
     const es = p && p.langlinks && p.langlinks[0] && p.langlinks[0].title;
     const rev = p && p.revisions && p.revisions[0];
     return {
@@ -501,17 +537,48 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
     };
   }
 
+  const ES_MONTHS = [
+    "enero", "febrero", "marzo", "abril", "mayo", "junio",
+    "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+  ];
+
+  function todayEsDate() {
+    const d = new Date();
+    return d.getDate() + " de " + ES_MONTHS[d.getMonth()] + " de " + d.getFullYear();
+  }
+
   // Atribución exigida al traducir ([[Plantilla:Traducido ref]]).
+  // Parámetros reales: 1=idioma, 2=página, oldid=versión, trad=tipo, fecha.
   function buildAttribution(sourceTitle, revid) {
-    return "{{Traducido ref|" + SOURCE_LANG + "|" + sourceTitle + (revid ? "|oldid=" + revid : "") + "|total}}";
+    return (
+      "{{Traducido ref|" + SOURCE_LANG + "|" + sourceTitle +
+      (revid ? "|oldid=" + revid : "") +
+      "|trad=total|fecha=" + todayEsDate() + "}}"
+    );
   }
 
   function buildEditSummary(sourceTitle, revid) {
     return "Traducido de [[:" + SOURCE_LANG + ":" + sourceTitle + "]]" + (revid ? " (versión " + revid + ")" : "");
   }
 
-  // Inserta la atribución en «Enlaces externos» (o crea la sección).
+  // Inserta la atribución ({{Traducido ref}}): tras {{Listaref}}, dentro de la
+  // sección «Referencias», tras «Enlaces externos» o, en su defecto, al final.
   function insertAttribution(wikitext, tpl) {
+    const refList = wikitext.match(/^[^\n]*\{\{\s*[Ll]istaref\b[^}]*\}\}[^\n]*$/m);
+    if (refList) {
+      const idx = refList.index + refList[0].length;
+      return wikitext.slice(0, idx) + "\n" + tpl + wikitext.slice(idx);
+    }
+    const refSec = wikitext.match(/^(==+\s*Referencias\s*==+)\s*$/im);
+    if (refSec) {
+      const after = refSec.index + refSec[0].length;
+      const rest = wikitext.slice(after);
+      const next = rest.search(/^==[^=]/m);
+      const insertAt = next === -1 ? wikitext.length : after + next;
+      const head = wikitext.slice(0, insertAt).replace(/\s*$/, "");
+      const tail = wikitext.slice(insertAt).replace(/^\s*/, "");
+      return head + "\n" + tpl + (tail ? "\n\n" + tail : "\n");
+    }
     const m = wikitext.match(/^(==+\s*Enlaces externos\s*==+)\s*$/im);
     if (m) {
       const idx = m.index + m[0].length;
@@ -543,7 +610,10 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
       const found = new Map();
       for (const p of (d.query && d.query.pages) || []) {
         const stripped = p.title.slice(p.title.indexOf(":") + 1);
-        found.set(stripped.toLowerCase(), (p.langlinks && p.langlinks[0] && p.langlinks[0].title) || null);
+        const key = stripped.toLowerCase();
+        const ll = (p.langlinks && p.langlinks[0] && p.langlinks[0].title) || null;
+        // Una langlink tiene prioridad sobre el null de una página-redirección.
+        if (ll || !found.has(key)) found.set(key, ll);
       }
       for (const n of part) {
         map[n] = found.has(n.toLowerCase()) ? found.get(n.toLowerCase()) : null;
@@ -593,28 +663,60 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
     return { text, blocks };
   }
 
-  // Cuenta llaves para capturar {{plantillas}}, {{{parámetros}}} y {|tablas|}
+  // Captura bloques con llaves: plantillas {{...}}/{{{...}}} y tablas {|...|}.
+  // Usa una pila para respetar el anidamiento (plantillas dentro de tablas y
+  // viceversa) y no confundir un valor de parámetro «|...» con una tabla.
   function maskBraces(s, put) {
     let out = "";
-    let depth = 0;
-    let start = -1;
-    for (let i = 0; i < s.length; i++) {
-      const c = s[i];
-      if (c === "{") {
-        if (depth === 0) start = i;
-        depth++;
-      } else if (c === "}") {
-        if (depth > 0) {
-          depth--;
-          if (depth === 0) out += put(s.slice(start, i + 1), "block");
-        } else {
-          out += c;
+    const stack = [];
+    const n = s.length;
+    let i = 0;
+    while (i < n) {
+      const ch = s[i];
+      if (ch === "{") {
+        if (s[i + 1] === "|") {
+          stack.push({ kind: "tbl", open: 2, start: i });
+          i += 2;
+          continue;
         }
-      } else if (depth === 0) {
-        out += c;
+        if (s[i + 1] === "{") {
+          let j = i;
+          while (j < n && s[j] === "{") j++;
+          stack.push({ kind: "tpl", open: Math.min(j - i, 3), start: i });
+          i = j;
+          continue;
+        }
+        if (!stack.length) out += ch;
+        i++;
+        continue;
       }
+      if (ch === "|" && s[i + 1] === "}" && stack.length && stack[stack.length - 1].kind === "tbl") {
+        const b = stack.pop();
+        if (!stack.length) out += put(s.slice(b.start, i + 2), "block");
+        i += 2;
+        continue;
+      }
+      if (ch === "}") {
+        const top = stack[stack.length - 1];
+        if (top && top.kind === "tpl") {
+          let j = i;
+          while (j < n && s[j] === "}") j++;
+          if (j - i >= top.open) {
+            stack.pop();
+            const end = i + top.open;
+            if (!stack.length) out += put(s.slice(top.start, end), "block");
+            i = end;
+            continue;
+          }
+        }
+        if (!stack.length) out += ch;
+        i++;
+        continue;
+      }
+      if (!stack.length) out += ch;
+      i++;
     }
-    if (depth > 0) out += s.slice(start);
+    if (stack.length) out += s.slice(stack[0].start);
     return out;
   }
 
@@ -656,6 +758,12 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
     let name = m[1].replace(/[`'"«»]/g, "").trim();
     if (!name || /^[{!#*:;]/.test(name)) return null;
     return name.slice(0, 60);
+  }
+
+  // ¿Es una plantilla de cita? Solo ahí se normalizan los parámetros.
+  function isCiteTemplate(wt) {
+    const name = templateName(wt);
+    return !!name && /^(cita|citar|cite)\b/i.test(name);
   }
 
   // ---------------------------------------------------------------------------
@@ -760,7 +868,7 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
     return blocks.map((b, i) => {
       if (b.kind === "block") {
         const out = blockOut[i] != null ? blockOut[i] : b.text;
-        return normalizeCiteParams(out);
+        return isCiteTemplate(out) ? normalizeCiteParams(out) : out;
       }
       if (b.kind === "category") {
         const en = b.meta.en;
@@ -909,7 +1017,7 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
         <div class="row">
           <label>Atribución de traducción (Plantilla:Traducido ref)</label>
           <textarea id="attr" class="small" readonly placeholder="Se genera al traducir…"></textarea>
-          <label class="chk"><input type="checkbox" id="useAttr" checked> Insertar en «Enlaces externos» del artículo</label>
+          <label class="chk"><input type="checkbox" id="useAttr" checked> Insertar la atribución en el artículo</label>
           <div id="attrHint" class="sub"></div>
         </div>
         <div class="actions">
@@ -939,6 +1047,15 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
     const setWarn = (html) => { warnEl.innerHTML = html || ""; };
     const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
+    async function hasApiKey() {
+      try {
+        const s = await chrome.storage.local.get({ apiKey: "" });
+        return !!s.apiKey;
+      } catch (_) {
+        return true;
+      }
+    }
+
     fab.addEventListener("click", async () => {
       panel.classList.add("open");
       fab.style.display = "none";
@@ -956,7 +1073,12 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
         }
         attrEl.value = buildAttribution(title, ll.revid);
         attrHintEl.textContent = "Resumen de edición sugerido: " + buildEditSummary(title, ll.revid);
-        setStatus("Listo. Pulsa «Traducir».");
+        if (await hasApiKey()) {
+          setStatus("Listo. Pulsa «Traducir».");
+        } else {
+          setWarn('<div class="warn">Falta la API key de OpenAI. Pulsa ⚙︎ para configurarla.</div>');
+          setStatus("Configura tu API key en Opciones (⚙︎) antes de traducir.", "err");
+        }
       } catch (e) {
         langEl.className = "badge no";
         langEl.textContent = "Sin comprobar";
@@ -1008,6 +1130,11 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
       btn.disabled = true;
       setWarn("");
       try {
+        if (!(await hasApiKey())) {
+          setWarn('<div class="warn">Falta la API key de OpenAI. Pulsa ⚙︎ para configurarla.</div>');
+          setStatus("Configura tu API key en Opciones (⚙︎) antes de traducir.", "err");
+          return;
+        }
         setStatus("Comprobando idioma…");
         const ll = await getEsLanglink(title);
         if (ll.exists && !confirm("Ya existe un artículo en español: «" + ll.esTitle + "».\n¿Quieres generar una traducción igualmente?")) {
@@ -1047,11 +1174,10 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
         if (unresolvedTpl.length) {
           setStatus("Buscando plantillas equivalentes por búsqueda…");
           const suggestions = await suggestEsTemplates(unresolvedTpl).catch(() => ({}));
-          for (const [en, hits] of Object.entries(suggestions)) {
-            const best = (hits || []).find((h) => !/\//.test(h) && !/\.(css|js)$/i.test(h));
-            if (best) {
-              templateNameMap[en] = "Plantilla:" + best;
-              autoApplied[en] = best;
+          for (const [en, es] of Object.entries(suggestions)) {
+            if (es) {
+              templateNameMap[en] = "Plantilla:" + es;
+              autoApplied[en] = es;
             }
           }
         }
@@ -1096,8 +1222,8 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
   const MAIN_PAGES = /^(Main_Page|Página_principal|Accueil_principal)$/i;
 
   function currentArticleTitle() {
-    if (!/^(en|pt|fr)\.wikipedia\.org$/i.test(location.hostname)) return null;
-    const m = location.pathname.match(/^\/wiki\/(.+)$/);
+    if (!/^(en|pt|fr)\.wikipedia\.org$/i.test(HOSTNAME)) return null;
+    const m = PATHNAME.match(/^\/wiki\/(.+)$/);
     if (!m) return null;
     const t = decodeURIComponent(m[1]);
     if (EXCLUDED_NS.test(t)) return null;
@@ -1105,6 +1231,31 @@ PROHIBIDO inventar: trabajo, sitio_web, fecha-acceso, url-archivo, fecha-archivo
     return t.replace(/_/g, " ");
   }
 
-  const title = currentArticleTitle();
-  if (title) buildUI(title);
+  if (typeof document !== "undefined") {
+    const title = currentArticleTitle();
+    if (title) buildUI(title);
+  }
+
+  // Exportación para las pruebas en Node (no afecta a la extensión).
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+      SOURCE_LANG,
+      maskWikitext,
+      maskBraces,
+      unmask,
+      normalizeCiteParams,
+      normalizeTplName,
+      isCiteTemplate,
+      isTable,
+      templateName,
+      chunkText,
+      insertAttribution,
+      buildReplacements,
+      postProcess,
+      buildAttribution,
+      currentArticleTitle,
+      langlinkMap,
+      langlinkMapHelpers: { SRC_CAT_NS, SRC_TPL_NS },
+    };
+  }
 })();

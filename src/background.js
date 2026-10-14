@@ -1,5 +1,9 @@
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
+if (chrome.action && chrome.action.onClicked) {
+  chrome.action.onClicked.addListener(() => chrome.runtime.openOptionsPage());
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && msg.type === "chat") {
     handleChat(msg.payload)
